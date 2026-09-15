@@ -3,151 +3,83 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>かざすだけ丸つけ v08</title>
+<title>かざすだけ丸つけ v09</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#111;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif}
 .wrap{max-width:900px;margin:auto;padding:14px}
-h1{font-size:22px;margin:4px 0 6px}
-.note{color:#bbb;font-size:14px;line-height:1.5;margin-bottom:12px}
-.camera{position:relative;width:100%;aspect-ratio:4/3;background:#222;border-radius:18px;overflow:hidden}
-video{width:100%;height:100%;object-fit:cover;display:block;background:#000}
-.guide{position:absolute;left:4%;right:4%;top:4%;bottom:4%;border:3px solid #fff;border-radius:10px;pointer-events:none}
+h1{font-size:22px;margin:4px 0 6px}.note{color:#bbb;font-size:14px;line-height:1.5;margin-bottom:12px}
+.camera{position:relative;width:100%;background:#222;border-radius:18px;overflow:hidden}
+video{width:100%;height:auto;display:block;background:#000}
+.guide{position:absolute;left:2%;right:2%;top:2%;bottom:2%;border:3px solid #fff;border-radius:10px;pointer-events:none}
 .guide:after{content:"答案1枚をここへ";position:absolute;left:50%;top:8px;transform:translateX(-50%);font-size:15px;font-weight:700;text-shadow:0 2px 5px #000;white-space:nowrap}
+.overlay{position:absolute;inset:0;pointer-events:none}
+.mark{position:absolute;width:44px;height:44px;border:5px solid #00ff22;border-radius:50%;display:block;box-shadow:0 0 5px #000;transform:translate(-50%,-50%)}
+.cross{position:absolute;width:48px;height:48px;display:block;transform:translate(-50%,-50%)}
+.cross:before,.cross:after{content:"";position:absolute;left:21px;top:0;width:5px;height:48px;background:#ff3030;border-radius:4px}
+.cross:before{transform:rotate(45deg)}.cross:after{transform:rotate(-45deg)}
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
 button{border:0;border-radius:18px;padding:22px 8px;font-size:19px;font-weight:700;background:#fff;color:#111}
 button:disabled{opacity:.45}
 .panel{margin-top:16px;background:#1d1d1d;border-radius:18px;padding:16px}
-.status{font-size:18px;line-height:1.5}
-.results{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.status{font-size:18px;line-height:1.5}.results{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 .item{background:#090909;border-radius:10px;padding:10px;font-size:16px}
 .small{color:#aaa;font-size:13px;line-height:1.5;margin-top:12px}
 </style>
 </head>
 <body>
 <div class="wrap">
-<h1>かざすだけ丸つけ v08</h1>
-<div class="note">まずカメラを確実に動かす版。15cm前後で1枚全部を入れるテストをします。</div>
-
-<div class="camera">
+<h1>かざすだけ丸つけ v09</h1>
+<div class="note">カメラの画角を切らない版。iPhoneのカメラ映像そのものの縦横比で表示します。</div>
+<div class="camera" id="camera">
 <video id="video" autoplay playsinline muted></video>
 <div class="guide"></div>
+<div class="overlay" id="overlay"></div>
 </div>
-
 <div class="controls">
 <button id="start">カメラ開始</button>
 <button id="test">1枚まるごと認識</button>
 <button id="demo">○×表示テスト</button>
 <button id="clear">○×を消す</button>
 </div>
-
 <div class="panel">
 <div id="status" class="status">「カメラ開始」を押してください。</div>
 <div id="results" class="results"></div>
-<div class="small">v08では、カメラ処理とOCR読み込みを分離しています。カメラが先に動くことを優先します。写真は保存しません。</div>
+<div class="small">v09は画角確認を最優先。写真は保存しません。</div>
 </div>
 </div>
-
-<!-- OCRはカメラ起動を邪魔しないよう後から読み込む -->
 <script>
-const video=document.getElementById('video');
-const start=document.getElementById('start');
-const test=document.getElementById('test');
-const demo=document.getElementById('demo');
-const clear=document.getElementById('clear');
-const status=document.getElementById('status');
-const results=document.getElementById('results');
-
+const video=document.getElementById('video'), camera=document.getElementById('camera');
+const start=document.getElementById('start'), test=document.getElementById('test'), demo=document.getElementById('demo'), clear=document.getElementById('clear');
+const status=document.getElementById('status'), results=document.getElementById('results'), overlay=document.getElementById('overlay');
 let stream=null;
-let ocrPromise=null;
 
-function loadOCR(){
-  if(ocrPromise) return ocrPromise;
-  ocrPromise=new Promise((resolve,reject)=>{
-    const s=document.createElement('script');
-    s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-    s.onload=()=>resolve(window.Tesseract);
-    s.onerror=()=>reject(new Error('OCRライブラリの読み込みに失敗しました'));
-    document.head.appendChild(s);
-  });
-  return ocrPromise;
-}
-
-start.addEventListener('click', async ()=>{
-  start.disabled=true;
-  status.textContent='カメラ起動中…';
-  try{
-    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      throw new Error('このブラウザではカメラを使用できません。');
-    }
-
-    // まずシンプルな条件で確実に取得。前版の解像度指定が原因になる場合にも対応。
-    try{
-      stream=await navigator.mediaDevices.getUserMedia({
-        video:{facingMode:{ideal:'environment'}},
-        audio:false
-      });
-    }catch(e){
-      // iPhone側の条件で失敗した場合の完全フォールバック
-      stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
-    }
-
-    video.srcObject=stream;
-    video.muted=true;
-    await video.play();
-
-    status.textContent='カメラOK。15cm前後から答案1枚を白枠に入れてください。';
-  }catch(e){
-    status.textContent='カメラを起動できませんでした：'+(e.message||e.name||e);
-    start.disabled=false;
-    return;
+start.onclick=async()=>{
+ start.disabled=true; status.textContent='カメラ起動中…';
+ try{
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});}
+  catch(e){stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});}
+  video.srcObject=stream; video.muted=true; await video.play();
+  if(video.videoWidth && video.videoHeight){
+    camera.style.aspectRatio=video.videoWidth+'/'+video.videoHeight;
   }
-  start.disabled=false;
-});
+  status.textContent='カメラOK。前より広い画角になっているはず。15cm前後で確認してください。';
+ }catch(e){status.textContent='カメラを起動できませんでした：'+(e.message||e.name||e); }
+ start.disabled=false;
+};
 
-demo.addEventListener('click',()=>{
-  status.textContent='○×表示テストOK。';
-});
+demo.onclick=()=>{
+ overlay.innerHTML='';
+ const pos=[[.25,.25],[.75,.25],[.25,.42],[.75,.42],[.25,.59],[.75,.59],[.25,.76],[.75,.76]];
+ pos.forEach((p,i)=>{let m=document.createElement('div');m.className='mark';m.style.left=(p[0]*100)+'%';m.style.top=(p[1]*100)+'%';overlay.appendChild(m)});
+ status.textContent='○×表示テストOK。8個の○を表示しました。';
+};
+clear.onclick=()=>{overlay.innerHTML='';results.innerHTML='';status.textContent='○×を消しました。'};
 
-clear.addEventListener('click',()=>{
-  status.textContent='○×を消しました。';
-  results.innerHTML='';
-});
-
-test.addEventListener('click',async()=>{
-  test.disabled=true;
-  results.innerHTML='';
-  try{
-    if(!video.videoWidth) throw new Error('先に「カメラ開始」を押してください。');
-    status.textContent='OCRライブラリを準備中…';
-    const T=await loadOCR();
-    if(!T) throw new Error('OCRライブラリを利用できません。');
-
-    // まずは1枚全体をOCRする診断。
-    const c=document.createElement('canvas');
-    c.width=video.videoWidth;
-    c.height=video.videoHeight;
-    c.getContext('2d').drawImage(video,0,0,c.width,c.height);
-
-    status.textContent='1枚を認識中…';
-    const r=await T.recognize(c,'eng',{
-      logger:m=>{
-        if(m.status==='recognizing text'){
-          status.textContent='1枚を認識中… '+Math.round((m.progress||0)*100)+'%';
-        }
-      }
-    });
-
-    const text=(r.data.text||'').trim();
-    results.innerHTML='<div class="item">OCR結果<br>'+ (text||'文字を認識できませんでした') +
-      '<br>信頼度：'+Math.round(r.data.confidence||0)+'</div>';
-    status.textContent='1枚の認識テスト完了。';
-  }catch(e){
-    status.textContent='認識エラー：'+(e.message||e);
-  }finally{
-    test.disabled=false;
-  }
-});
+test.onclick=()=>{
+ status.textContent='認識テストは次段階で再実装します。今回は画角確認を優先します。';
+ results.innerHTML='<div class="item">v09：まずカメラ画角を確認してください。</div>';
+};
 </script>
 </body>
 </html>
