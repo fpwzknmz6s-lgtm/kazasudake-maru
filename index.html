@@ -3,42 +3,75 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>かざすだけ丸つけ・試作0.2</title>
+<title>かざすだけ丸つけ・試作0.3</title>
 <style>
-:root{color-scheme:dark}*{box-sizing:border-box}html,body{margin:0;background:#111;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif}#app{height:100vh;display:flex;flex-direction:column}header{height:52px;padding:0 14px;background:#181818;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:space-between}#stage{position:relative;flex:1;overflow:hidden;background:#000}video{position:absolute;width:100%;height:100%;object-fit:cover}#overlay{position:absolute;inset:0;pointer-events:none}.mark{position:absolute;font-size:34px;font-weight:900;transform:translate(-50%,-50%);text-shadow:0 1px 4px #000}.ok,.ng{color:#fff}.wait{color:#aaa}.guide{position:absolute;left:6%;right:6%;top:5%;bottom:5%;border:2px solid rgba(255,255,255,.55);border-radius:12px;pointer-events:none}.guide span{position:absolute;top:8px;left:10px;background:rgba(0,0,0,.55);padding:4px 7px;border-radius:6px;font-size:11px}.corner{position:absolute;width:22px;height:22px;border-color:#fff;border-style:solid}.tl{left:-2px;top:-2px;border-width:3px 0 0 3px}.tr{right:-2px;top:-2px;border-width:3px 3px 0 0}.bl{left:-2px;bottom:-2px;border-width:0 0 3px 3px}.br{right:-2px;bottom:-2px;border-width:0 3px 3px 0}#controls{padding:10px;background:#181818;display:grid;grid-template-columns:1fr 1fr;gap:8px}button{font-size:15px;font-weight:700;border:0;border-radius:10px;padding:11px 8px;background:#fff;color:#111}button:disabled{opacity:.45}#status{grid-column:1/-1;font-size:12px;color:#ccc;min-height:18px}#note{padding:8px 12px;background:#222;font-size:11px;line-height:1.45;color:#ccc}#result{display:none;position:absolute;left:10px;right:10px;bottom:10px;background:rgba(0,0,0,.82);border-radius:12px;padding:10px;font-size:13px;backdrop-filter:blur(8px)}#result b{font-size:15px}canvas{display:none}
+*{box-sizing:border-box}body{margin:0;background:#111;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
+header{height:64px;padding:18px 22px;font-size:22px;font-weight:700;background:#171717}
+main{padding:12px 14px 24px}.stage{position:relative;width:100%;aspect-ratio:3/4;background:#000;border:3px solid #aaa;border-radius:4px;overflow:hidden}
+video{width:100%;height:100%;object-fit:cover;display:block}
+.guide{position:absolute;inset:5%;border:2px solid rgba(255,255,255,.75);pointer-events:none}
+.guide:before{content:"答え欄をここに合わせる";position:absolute;top:8px;left:10px;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;font-size:15px}
+.marks{position:absolute;inset:0;pointer-events:none}
+.mark{position:absolute;font-size:42px;font-weight:800;text-shadow:0 2px 5px #000}
+.ok{color:#fff}.ng{color:#fff}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+button{border:0;border-radius:12px;padding:16px 8px;font-size:17px;font-weight:700;background:#fff;color:#111}
+button:disabled{background:#777;color:#222}
+.status{margin-top:12px;padding:12px;border-radius:10px;background:#1d1d1d;line-height:1.6;font-size:14px}
+.small{opacity:.75;font-size:13px;margin-top:10px}
 </style>
 </head>
 <body>
-<div id="app">
-<header><span>かざすだけ丸つけ・試作</span><span id="count">—</span></header>
-<div id="stage">
+<header>かざすだけ丸つけ・試作0.3</header>
+<main>
+<div class="stage">
   <video id="video" autoplay playsinline muted></video>
-  <div class="guide"><span>紙をここに入れる</span><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></div>
-  <div id="overlay"></div>
-  <div id="result"></div>
+  <div class="guide"></div>
+  <div id="marks" class="marks"></div>
 </div>
-<div id="controls">
+<div class="controls">
   <button id="start">カメラ開始</button>
-  <button id="demo">位置デモ</button>
-  <button id="ocr" disabled>手書き認識テスト</button>
+  <button id="test" disabled>答え欄テスト</button>
   <button id="clear">○×を消す</button>
-  <div id="status">写真は保存せず、画面上の一時画像だけを使う試作です。</div>
 </div>
-<div id="note">試作0.2：ライブカメラ＋一時フレームのOCR検証版。認識結果が不確かな場合は○×を出さず「要確認」にします。実際の手書き採点精度はこれから検証します。</div>
-<canvas id="canvas"></canvas>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<div id="status" class="status">3桁＋3桁用。今回は「答え欄だけを読む」方式の位置検証版です。</div>
+<div class="small">写真は保存しません。認識処理はこの試作では実装途中です。</div>
+</main>
 <script>
-const video=document.getElementById('video'),overlay=document.getElementById('overlay'),status=document.getElementById('status'),count=document.getElementById('count'),ocrBtn=document.getElementById('ocr'),canvas=document.getElementById('canvas'),result=document.getElementById('result');
-let stream=null;
-// 画面上の答え位置（2列×4行）。紙の四隅追従を実装したらここを自動変換する。
-const pts=[[.31,.29],[.31,.47],[.31,.65],[.31,.84],[.72,.29],[.72,.47],[.72,.65],[.72,.84]];
-function clearMarks(){overlay.innerHTML='';result.style.display='none';count.textContent='—';}
-function showMarks(values){clearMarks();let ok=0;values.forEach((v,i)=>{const el=document.createElement('div');el.className='mark '+(v==='○'?'ok':v==='×'?'ng':'wait');el.textContent=v;el.style.left=pts[i][0]*100+'%';el.style.top=pts[i][1]*100+'%';overlay.appendChild(el);if(v==='○')ok++;});count.textContent=ok+'/8';}
-document.getElementById('start').onclick=async()=>{try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});video.srcObject=stream;ocrBtn.disabled=false;status.textContent='カメラ起動中。紙を枠内に入れてください。';}catch(e){status.textContent='カメラを開始できませんでした。Safariのカメラ許可を確認してください。';}};
-document.getElementById('demo').onclick=()=>{showMarks(['○','○','○','○','○','○','×','×']);status.textContent='位置デモ。これは実際の採点結果ではありません。';};
-document.getElementById('clear').onclick=()=>{clearMarks();status.textContent='○×を消しました。';};
-ocrBtn.onclick=async()=>{if(!video.videoWidth){status.textContent='先にカメラを開始してください。';return;}ocrBtn.disabled=true;clearMarks();status.textContent='一時フレームを解析中……写真として保存はしません。';canvas.width=video.videoWidth;canvas.height=video.videoHeight;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(video,0,0);try{const {data}=await Tesseract.recognize(canvas,'eng',{logger:m=>{if(m.status==='recognizing text'&&m.progress)status.textContent='手書き認識中… '+Math.round(m.progress*100)+'%';},tessedit_char_whitelist:'0123456789+=-'});const text=(data.text||'').replace(/\s/g,'');const nums=text.match(/\d{1,4}/g)||[];result.innerHTML='<b>認識テキスト</b><br>'+((text||'（認識できませんでした）').slice(0,180))+'<br><small>この段階では自動○×判定はまだ行いません。誤認識を確認するためのテストです。</small>';result.style.display='block';status.textContent='認識テスト完了。手書き数字の精度を確認します。';count.textContent=nums.length?nums.length+'件':'—';}catch(e){status.textContent='認識に失敗しました。';}finally{ocrBtn.disabled=false;}};
+const video=document.getElementById('video');
+const start=document.getElementById('start');
+const test=document.getElementById('test');
+const clear=document.getElementById('clear');
+const marks=document.getElementById('marks');
+const status=document.getElementById('status');
+
+async function camera(){
+  try{
+    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+    video.srcObject=s; test.disabled=false;
+    status.textContent="カメラ起動OK。プリント全体を枠に合わせて「答え欄テスト」を押してください。";
+  }catch(e){status.textContent="カメラを起動できませんでした。Safariのカメラ許可を確認してください。";}
+}
+start.onclick=camera;
+clear.onclick=()=>marks.innerHTML="";
+
+/* B80b等の8問レイアウトを想定した「答え欄位置」だけのデモ。
+   実認識ではこの8領域を個別にOCR/数字認識へ渡す。 */
+test.onclick=()=>{
+  marks.innerHTML="";
+  const pos=[
+    [25,27],[75,27],[25,50],[75,50],
+    [25,72],[75,72],[25,94],[75,94]
+  ];
+  pos.forEach(([x,y],i)=>{
+    const d=document.createElement("div");
+    d.className="mark ok"; d.textContent="○";
+    d.style.left=`${x}%`; d.style.top=`${y}%`;
+    d.style.transform="translate(-50%,-50%)";
+    marks.appendChild(d);
+  });
+  status.textContent="8つの「答え欄」だけに判定位置を重ねるデモです。次段階で各領域の手書き数字認識を接続します。";
+};
 </script>
 </body>
 </html>
