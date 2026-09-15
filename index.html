@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>かざすだけ丸つけ 試作</title>
+<style>
+html,body{margin:0;background:#111;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif}
+#app{height:100vh;display:flex;flex-direction:column}
+header{padding:10px 14px;background:#181818;font-size:15px;font-weight:700;display:flex;justify-content:space-between}
+#stage{position:relative;flex:1;overflow:hidden;background:#000}
+video{position:absolute;width:100%;height:100%;object-fit:cover}
+#overlay{position:absolute;inset:0;pointer-events:none}
+.mark{position:absolute;font-size:28px;font-weight:800;text-shadow:0 1px 3px #000;transform:translate(-50%,-50%)}
+.ok{color:#fff}.ng{color:#fff}.wait{color:#aaa}
+#controls{padding:10px;background:#181818;display:flex;gap:8px;align-items:center}
+button{font-size:16px;border:0;border-radius:10px;padding:10px 14px;background:#fff;color:#111}
+#status{font-size:12px;color:#ccc;flex:1}
+#note{padding:8px 12px;background:#222;font-size:12px;line-height:1.4}
+</style>
+</head>
+<body>
+<div id="app">
+<header><span>かざすだけ丸つけ・試作</span><span id="count">0/8</span></header>
+<div id="stage">
+  <video id="video" autoplay playsinline muted></video>
+  <div id="overlay"></div>
+</div>
+<div id="controls">
+  <button id="start">カメラ開始</button>
+  <button id="demo">判定デモ</button>
+  <div id="status">まず「カメラ開始」。写真は保存しません。</div>
+</div>
+<div id="note">
+試作0.1：カメラ映像の上に採点マークを重ねるUI検証版です。
+「判定デモ」はB71aの8問位置に○×を表示します。まだ手書き数字の自動認識は実装前です。
+</div>
+</div>
+<script>
+const video=document.getElementById('video');
+const overlay=document.getElementById('overlay');
+const status=document.getElementById('status');
+const count=document.getElementById('count');
+
+// B71aの「答え」付近を画面比率で配置する仮座標。
+// 実際の紙の四隅を認識して追従させる段階で置き換える。
+const pts=[
+ [0.31,0.29],[0.31,0.47],[0.31,0.65],[0.31,0.84],
+ [0.72,0.29],[0.72,0.47],[0.72,0.65],[0.72,0.84]
+];
+
+document.getElementById('start').onclick=async()=>{
+ try{
+   const stream=await navigator.mediaDevices.getUserMedia({
+     video:{facingMode:{ideal:"environment"}},
+     audio:false
+   });
+   video.srcObject=stream;
+   status.textContent="カメラ起動中。紙を画面いっぱいに入れてください。";
+ }catch(e){
+   status.textContent="カメラを開始できませんでした。Safariのカメラ許可とHTTPS接続を確認してください。";
+ }
+};
+
+document.getElementById('demo').onclick=()=>{
+ overlay.innerHTML="";
+ let n=0;
+ pts.forEach((p,i)=>{
+   const el=document.createElement('div');
+   el.className="mark "+([2,7].includes(i)?"ng":"ok");
+   el.textContent=[2,7].includes(i)?"×":"○";
+   el.style.left=(p[0]*100)+"%";
+   el.style.top=(p[1]*100)+"%";
+   overlay.appendChild(el);
+   if(![2,7].includes(i)) n++;
+ });
+ count.textContent=n+"/8";
+ status.textContent="デモ表示。○×の位置・大きさを確認するためのものです。";
+};
+</script>
+</body>
+</html>
