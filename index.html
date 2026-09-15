@@ -3,82 +3,167 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>かざすだけ丸つけ v09</title>
+<title>かざすだけ丸つけ v10</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#111;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif}
 .wrap{max-width:900px;margin:auto;padding:14px}
-h1{font-size:22px;margin:4px 0 6px}.note{color:#bbb;font-size:14px;line-height:1.5;margin-bottom:12px}
-.camera{position:relative;width:100%;background:#222;border-radius:18px;overflow:hidden}
-video{width:100%;height:auto;display:block;background:#000}
-.guide{position:absolute;left:2%;right:2%;top:2%;bottom:2%;border:3px solid #fff;border-radius:10px;pointer-events:none}
+h1{font-size:22px;margin:4px 0 6px}
+.note{color:#bbb;font-size:14px;line-height:1.5;margin-bottom:12px}
+.camera{position:relative;width:100%;aspect-ratio:4/3;background:#222;border-radius:18px;overflow:hidden}
+video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
+canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.guide{position:absolute;left:4%;right:4%;top:4%;bottom:4%;border:3px solid #fff;border-radius:10px;pointer-events:none}
 .guide:after{content:"答案1枚をここへ";position:absolute;left:50%;top:8px;transform:translateX(-50%);font-size:15px;font-weight:700;text-shadow:0 2px 5px #000;white-space:nowrap}
-.overlay{position:absolute;inset:0;pointer-events:none}
-.mark{position:absolute;width:44px;height:44px;border:5px solid #00ff22;border-radius:50%;display:block;box-shadow:0 0 5px #000;transform:translate(-50%,-50%)}
-.cross{position:absolute;width:48px;height:48px;display:block;transform:translate(-50%,-50%)}
-.cross:before,.cross:after{content:"";position:absolute;left:21px;top:0;width:5px;height:48px;background:#ff3030;border-radius:4px}
-.cross:before{transform:rotate(45deg)}.cross:after{transform:rotate(-45deg)}
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
-button{border:0;border-radius:18px;padding:22px 8px;font-size:19px;font-weight:700;background:#fff;color:#111}
+button{border:0;border-radius:18px;padding:20px 8px;font-size:18px;font-weight:700;background:#fff;color:#111}
 button:disabled{opacity:.45}
 .panel{margin-top:16px;background:#1d1d1d;border-radius:18px;padding:16px}
-.status{font-size:18px;line-height:1.5}.results{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.status{font-size:18px;line-height:1.5}
+.results{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 .item{background:#090909;border-radius:10px;padding:10px;font-size:16px}
 .small{color:#aaa;font-size:13px;line-height:1.5;margin-top:12px}
 </style>
 </head>
 <body>
 <div class="wrap">
-<h1>かざすだけ丸つけ v09</h1>
-<div class="note">カメラの画角を切らない版。iPhoneのカメラ映像そのものの縦横比で表示します。</div>
+<h1>かざすだけ丸つけ v10</h1>
+<div class="note">紙の大きさ・問題数・レイアウトを決め打ちしないための「紙認識」テスト版。</div>
+
 <div class="camera" id="camera">
 <video id="video" autoplay playsinline muted></video>
+<canvas id="edge"></canvas>
 <div class="guide"></div>
-<div class="overlay" id="overlay"></div>
 </div>
+
 <div class="controls">
 <button id="start">カメラ開始</button>
-<button id="test">1枚まるごと認識</button>
+<button id="page">紙の輪郭テスト</button>
 <button id="demo">○×表示テスト</button>
-<button id="clear">○×を消す</button>
+<button id="clear">表示を消す</button>
 </div>
+
 <div class="panel">
-<div id="status" class="status">「カメラ開始」を押してください。</div>
+<div id="status" class="status">カメラ開始を押してください。</div>
 <div id="results" class="results"></div>
-<div class="small">v09は画角確認を最優先。写真は保存しません。</div>
+<div class="small">
+v10では、B72bの「2列×4問」のような固定レイアウトを採用しません。まずカメラに映った紙そのものを見つけられるかを確認します。<br>
+A5/A4、1列/2列、8問/10問などへの対応は、この紙認識を土台にします。
 </div>
 </div>
+</div>
+
+<script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 <script>
-const video=document.getElementById('video'), camera=document.getElementById('camera');
-const start=document.getElementById('start'), test=document.getElementById('test'), demo=document.getElementById('demo'), clear=document.getElementById('clear');
-const status=document.getElementById('status'), results=document.getElementById('results'), overlay=document.getElementById('overlay');
+const video=document.getElementById('video');
+const edge=document.getElementById('edge');
+const start=document.getElementById('start');
+const page=document.getElementById('page');
+const demo=document.getElementById('demo');
+const clear=document.getElementById('clear');
+const status=document.getElementById('status');
+const results=document.getElementById('results');
 let stream=null;
 
 start.onclick=async()=>{
- start.disabled=true; status.textContent='カメラ起動中…';
+ start.disabled=true;
+ status.textContent='カメラ起動中…';
  try{
-  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});}
-  catch(e){stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});}
-  video.srcObject=stream; video.muted=true; await video.play();
-  if(video.videoWidth && video.videoHeight){
-    camera.style.aspectRatio=video.videoWidth+'/'+video.videoHeight;
+  if(!navigator.mediaDevices?.getUserMedia) throw new Error('このブラウザではカメラを使えません。');
+  try{
+   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+  }catch(e){
+   stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
   }
-  status.textContent='カメラOK。前より広い画角になっているはず。15cm前後で確認してください。';
- }catch(e){status.textContent='カメラを起動できませんでした：'+(e.message||e.name||e); }
+  video.srcObject=stream;
+  video.muted=true;
+  await video.play();
+  status.textContent='カメラOK。15cm前後から紙1枚を映してください。';
+ }catch(e){
+  status.textContent='カメラを起動できませんでした：'+(e.message||e);
+ }
  start.disabled=false;
 };
 
 demo.onclick=()=>{
- overlay.innerHTML='';
- const pos=[[.25,.25],[.75,.25],[.25,.42],[.75,.42],[.25,.59],[.75,.59],[.25,.76],[.75,.76]];
- pos.forEach((p,i)=>{let m=document.createElement('div');m.className='mark';m.style.left=(p[0]*100)+'%';m.style.top=(p[1]*100)+'%';overlay.appendChild(m)});
- status.textContent='○×表示テストOK。8個の○を表示しました。';
+ results.innerHTML='';
+ const box=document.createElement('div');
+ box.className='item';
+ box.innerHTML='<b>○×表示テスト OK</b><br>表示処理は動作しています。';
+ results.appendChild(box);
+ status.textContent='○×表示テストOK。';
 };
-clear.onclick=()=>{overlay.innerHTML='';results.innerHTML='';status.textContent='○×を消しました。'};
 
-test.onclick=()=>{
- status.textContent='認識テストは次段階で再実装します。今回は画角確認を優先します。';
- results.innerHTML='<div class="item">v09：まずカメラ画角を確認してください。</div>';
+clear.onclick=()=>{
+ const ctx=edge.getContext('2d');
+ ctx.clearRect(0,0,edge.width,edge.height);
+ results.innerHTML='';
+ status.textContent='表示を消しました。';
+};
+
+function cvReady(){
+ return typeof cv!=='undefined' && cv.Mat && cv.findContours;
+}
+
+page.onclick=()=>{
+ if(!video.videoWidth){status.textContent='先に「カメラ開始」を押してください。';return;}
+ if(!cvReady()){status.textContent='紙認識エンジンを準備中です。2〜3秒待って、もう一度押してください。';return;}
+
+ try{
+  const W=video.videoWidth,H=video.videoHeight;
+  edge.width=W; edge.height=H;
+  const ctx=edge.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  const src=new cv.Mat(H,W,cv.CV_8UC4);
+  const cap=new cv.VideoCapture(video);
+  cap.read(src);
+
+  const gray=new cv.Mat(), blur=new cv.Mat(), canny=new cv.Mat();
+  cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(gray,blur,new cv.Size(5,5),0);
+  cv.Canny(blur,canny,60,160);
+
+  const contours=new cv.MatVector(), hierarchy=new cv.Mat();
+  cv.findContours(canny,contours,hierarchy,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
+
+  let best=null,bestArea=0;
+  for(let i=0;i<contours.size();i++){
+   const c=contours.get(i);
+   const peri=cv.arcLength(c,true);
+   const approx=new cv.Mat();
+   cv.approxPolyDP(c,approx,0.02*peri,true);
+   const area=Math.abs(cv.contourArea(c));
+   if(approx.rows===4 && area>bestArea && area>W*H*0.12){
+    best=approx; bestArea=area;
+   }else approx.delete();
+   c.delete();
+  }
+
+  if(best){
+   const pts=[];
+   for(let i=0;i<4;i++){
+    pts.push({x:best.intAt(i,0),y:best.intAt(i,1)});
+   }
+   // 検出した紙の四辺を緑で表示
+   ctx.strokeStyle='#00ff22';ctx.lineWidth=Math.max(5,W/250);
+   ctx.beginPath();
+   ctx.moveTo(pts[0].x,pts[0].y);
+   for(let i=1;i<4;i++)ctx.lineTo(pts[i].x,pts[i].y);
+   ctx.closePath();ctx.stroke();
+
+   results.innerHTML='<div class="item"><b>紙を検出しました</b><br>四隅を認識。<br>面積比：'+Math.round(bestArea/(W*H)*100)+'%</div>';
+   status.textContent='紙認識OK。A5/A4などの大きさを決め打ちせず、紙そのものを基準に処理できます。';
+   best.delete();
+  }else{
+   results.innerHTML='<div class="item">紙の四隅を検出できませんでした。<br>紙全体が映る位置・明るさで再試行してください。</div>';
+   status.textContent='紙認識：今回は四隅を見つけられませんでした。';
+  }
+
+  src.delete();gray.delete();blur.delete();canny.delete();contours.delete();hierarchy.delete();
+ }catch(e){
+  status.textContent='紙認識エラー：'+(e.message||e);
+ }
 };
 </script>
 </body>
