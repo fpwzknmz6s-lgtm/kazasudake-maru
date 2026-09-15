@@ -3,125 +3,142 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>かざすだけ丸つけ・試作0.4</title>
+<title>かざすだけ丸つけ v0.5</title>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#111;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif}
-header{height:74px;display:flex;align-items:center;padding:0 26px;font-size:26px;font-weight:700;background:#181818}
-main{max-width:900px;margin:auto;padding:18px}
-.camera{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:3/4}
+*{box-sizing:border-box}
+body{margin:0;background:#111;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif}
+.wrap{max-width:900px;margin:auto;padding:14px}
+h1{font-size:22px;margin:4px 0 12px}
+.camera{position:relative;width:100%;aspect-ratio:4/3;background:#222;border-radius:18px;overflow:hidden}
 video{width:100%;height:100%;object-fit:cover;display:block}
-canvas{display:none}.overlay{position:absolute;inset:6%;border:3px solid #fff;pointer-events:none}
-.corner{position:absolute;width:42px;height:42px;border-color:#fff;border-style:solid}.tl{top:-3px;left:-3px;border-width:7px 0 0 7px}.tr{top:-3px;right:-3px;border-width:7px 7px 0 0}.bl{bottom:-3px;left:-3px;border-width:0 0 7px 7px}.br{bottom:-3px;right:-3px;border-width:0 7px 7px 0}
-.hint{position:absolute;top:20px;left:20px;background:#555d;color:#fff;padding:9px 13px;border-radius:9px;font-size:17px}
-.mark{position:absolute;transform:translate(-50%,-50%);font-size:54px;font-weight:700;text-shadow:0 2px 5px #000}
-.mark.ok{color:#fff}.mark.ng{color:#fff}
-.controls{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
-button{font-size:20px;font-weight:700;padding:20px 10px;border:0;border-radius:14px;background:#fff;color:#111}
-button:disabled{opacity:.45}.status{margin-top:14px;padding:14px 16px;background:#202020;border-radius:12px;line-height:1.55}
-.small{font-size:14px;color:#bbb;margin-top:10px}.results{margin-top:12px;background:#191919;border-radius:12px;padding:12px 15px}
-.row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #333}.row:last-child{border:0}
-.badge{font-weight:700}.warn{color:#ddd}
+.guide{position:absolute;left:8%;right:8%;top:8%;bottom:8%;border:3px solid #fff;border-radius:12px;pointer-events:none}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
+button{border:0;border-radius:18px;padding:25px 10px;font-size:21px;font-weight:700;background:#fff;color:#111}
+button:disabled{opacity:.45}
+.panel{margin-top:18px;background:#1d1d1d;border-radius:18px;padding:18px}
+.status{font-size:18px;line-height:1.5}
+pre{white-space:pre-wrap;word-break:break-word;background:#090909;border-radius:12px;padding:14px;font-size:16px;line-height:1.45;min-height:80px}
+.small{color:#bbb;font-size:14px;line-height:1.5}
 </style>
 </head>
 <body>
-<header>かざすだけ丸つけ・試作0.4</header>
-<main>
+<div class="wrap">
+<h1>かざすだけ丸つけ v0.5（認識デバッグ版）</h1>
+
 <div class="camera">
-  <video id="video" playsinline autoplay muted></video>
-  <div class="overlay"><div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div><div class="hint">答え欄をここに合わせる</div></div>
-  <div id="marks"></div>
+  <video id="video" autoplay playsinline muted></video>
+  <div class="guide"></div>
 </div>
-<canvas id="frame"></canvas>
+
 <div class="controls">
   <button id="start">カメラ開始</button>
-  <button id="test">答え欄テスト</button>
-  <button id="ocr" disabled>手書き認識テスト</button>
+  <button id="test">手書き認識テスト</button>
+  <button id="demo">答え欄テスト</button>
   <button id="clear">○×を消す</button>
 </div>
-<div class="status" id="status">0.4：ライブカメラ上の答え欄を切り出し、OCRで手書き数字を読む検証版です。認識に自信がない場合は「要確認」とします。</div>
-<div class="results" id="results" hidden></div>
-<div class="small">写真は保存しません。OCR処理のため、一時的にカメラフレームをメモリ上で処理します。</div>
-</main>
+
+<div class="panel">
+  <div id="status" class="status">まず「カメラ開始」を押してください。</div>
+  <pre id="raw">ここにOCRの生の認識結果が表示されます。</pre>
+</div>
+
+<div class="panel">
+  <div class="small">
+    ※この版は「OCRが何と読んだか」を確認するためのテスト版です。<br>
+    写真は保存しません。カメラ映像から一時的に処理します。
+  </div>
+</div>
+</div>
+
 <script>
-const video=document.getElementById('video'), canvas=document.getElementById('frame');
-const start=document.getElementById('start'), test=document.getElementById('test'), ocr=document.getElementById('ocr');
-const clear=document.getElementById('clear'), marks=document.getElementById('marks'), status=document.getElementById('status'), results=document.getElementById('results');
+const video=document.getElementById('video');
+const start=document.getElementById('start');
+const test=document.getElementById('test');
+const demo=document.getElementById('demo');
+const clear=document.getElementById('clear');
+const status=document.getElementById('status');
+const raw=document.getElementById('raw');
 
-const expected=[734,690,722,581,781,772,493,892];
-// Relative positions for the 8 answer fields, in the camera frame.
-// Order: left top -> right top, then down.
-const positions=[
- [0.22,0.25],[0.72,0.25],[0.22,0.50],[0.72,0.50],
- [0.22,0.72],[0.72,0.72],[0.22,0.91],[0.72,0.91]
-];
-
-function addMark(i,good){
- const [x,y]=positions[i], el=document.createElement('div');
- el.className='mark '+(good?'ok':'ng'); el.textContent=good?'○':'×';
- el.style.left=(x*100)+'%'; el.style.top=(y*100)+'%'; marks.appendChild(el);
-}
-function demo(){
- marks.innerHTML=''; expected.forEach((_,i)=>addMark(i,true));
- status.textContent='位置デモ。これは実際の採点結果ではありません。';
-}
-clear.onclick=()=>{marks.innerHTML='';results.hidden=true;status.textContent='○×を消しました。';};
-test.onclick=demo;
+let stream=null;
 
 start.onclick=async()=>{
- try{
-   const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:1920}},audio:false});
-   video.srcObject=stream; await video.play(); ocr.disabled=false;
-   status.textContent='カメラ開始。紙を枠内に合わせてください。';
- }catch(e){status.textContent='カメラを開始できませんでした。Safariのカメラ許可とHTTPSを確認してください。';}
+  try{
+    status.textContent='カメラ起動中…';
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'}},
+      audio:false
+    });
+    video.srcObject=stream;
+    await video.play();
+    status.textContent='カメラOK。答案を枠に合わせて「手書き認識テスト」を押してください。';
+  }catch(e){
+    status.textContent='カメラ起動エラー: '+e.message;
+  }
 };
 
-function captureCrop(relx,rely){
- const vw=video.videoWidth, vh=video.videoHeight;
- if(!vw||!vh) return null;
- canvas.width=vw; canvas.height=vh;
- const ctx=canvas.getContext('2d',{willReadFrequently:true});
- ctx.drawImage(video,0,0,vw,vh);
- // Crop around each answer area. Tuned for the current 8-field test layout.
- const cw=Math.round(vw*0.27), ch=Math.round(vh*0.10);
- const cx=Math.round(vw*relx), cy=Math.round(vh*rely);
- const sx=Math.max(0,Math.min(vw-cw,cx-cw/2)), sy=Math.max(0,Math.min(vh-ch,cy-ch/2));
- const tmp=document.createElement('canvas'); tmp.width=cw; tmp.height=ch;
- tmp.getContext('2d').drawImage(canvas,sx,sy,cw,ch,0,0,cw,ch);
- return tmp;
+demo.onclick=()=>{
+  status.textContent='答え欄テスト：○を表示しました。';
+};
+
+clear.onclick=()=>{
+  status.textContent='○×を消しました。';
+  raw.textContent='';
+};
+
+function cropCanvas(x,y,w,h){
+  const c=document.createElement('canvas');
+  c.width=900;c.height=700;
+  const ctx=c.getContext('2d');
+  ctx.drawImage(video,x,y,w,h,0,0,c.width,c.height);
+  return c;
 }
 
-async function recognize(canvasEl){
- // Tesseract is used only as a first recognition probe. It is deliberately conservative:
- // OCR confidence below 60 is treated as uncertain.
- const {data}=await Tesseract.recognize(canvasEl,'eng',{
-   logger:m=>{ if(m.status==='recognizing text') status.textContent='手書き認識中… '+Math.round((m.progress||0)*100)+'%';}
- });
- const text=(data.text||'').replace(/[^0-9]/g,'');
- return {text, confidence:data.confidence||0};
-}
+test.onclick=async()=>{
+  // まず「クリック自体が認識された」ことを即表示
+  status.textContent='手書き認識テスト開始。カメラ画像を一時処理しています…';
+  raw.textContent='OCR準備中…';
+  test.disabled=true;
 
-ocr.onclick=async()=>{
- if(!video.srcObject){status.textContent='先に「カメラ開始」を押してください。';return;}
- ocr.disabled=true; marks.innerHTML=''; results.hidden=false; results.innerHTML='';
- const found=[];
- for(let i=0;i<positions.length;i++){
-   status.textContent=`手書き認識中… ${i+1}/8`;
-   const crop=captureCrop(...positions[i]);
-   if(!crop){found.push({i,text:'',confidence:0});continue;}
-   try{found.push({i,...await recognize(crop)});}
-   catch(e){found.push({i,text:'',confidence:0});}
- }
- let html='';
- found.forEach(r=>{
-   const n=parseInt(r.text,10), certain=Number.isFinite(n)&&r.confidence>=60;
-   const good=certain&&n===expected[r.i];
-   if(certain) addMark(r.i,good);
-   html+=`<div class="row"><span>${r.i+1}問目</span><span class="badge">${certain?(r.text+' → '+(good?'○':'×')):'要確認'}</span></div>`;
- });
- results.innerHTML=html;
- status.textContent='認識テスト完了。○×はOCRが十分な確信度で読めたものだけ表示しています。';
- ocr.disabled=false;
+  try{
+    if(!video.videoWidth){
+      throw new Error('カメラ映像が取得できていません。「カメラ開始」を先に押してください。');
+    }
+    if(typeof Tesseract==='undefined'){
+      throw new Error('OCRライブラリを読み込めていません。通信状態を確認してください。');
+    }
+
+    const W=video.videoWidth,H=video.videoHeight;
+    // 画面中央のガイド内を1枚としてOCRに渡す診断版
+    const x=Math.round(W*.08), y=Math.round(H*.08);
+    const w=Math.round(W*.84), h=Math.round(H*.84);
+    const canvas=cropCanvas(x,y,w,h);
+
+    status.textContent='OCR実行中…（少し時間がかかります）';
+    const result=await Tesseract.recognize(canvas,'eng',{
+      logger:m=>{
+        if(m.status){
+          const p=m.progress?Math.round(m.progress*100):0;
+          status.textContent='OCR: '+m.status+(p?' '+p+'%':'');
+        }
+      }
+    });
+
+    const text=(result.data.text||'').trim();
+    raw.textContent=
+      '【OCRが実際に読んだ文字】\n'+(text||'（文字を認識できませんでした）')+
+      '\n\n【信頼度】 '+(result.data.confidence??'不明')+
+      '\n\n【診断】\n'+
+      (text ? 'OCR処理は成功。次は数字の切り出し・採点処理を改善します。'
+            : 'OCR処理は動作したが、文字を認識できませんでした。');
+
+    status.textContent='認識テスト完了。下の「OCRが実際に読んだ文字」を確認してください。';
+  }catch(e){
+    status.textContent='認識テストでエラーが発生しました。';
+    raw.textContent='【エラー内容】\n'+(e?.stack||e?.message||String(e));
+  }finally{
+    test.disabled=false;
+  }
 };
 </script>
 </body>
